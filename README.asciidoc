@@ -1,0 +1,45 @@
+= VPC-NAT-HA
+
+vpc-nat-ha is a Python reimplementation of the Amazon reference design for creating a highly-available NAT in AWS Virtual Private Cloud. This document generally describes only the ways in which vpc-nat-ha differs from the reference design. See the following for the complete reference design instructions:
+
+https://aws.amazon.com/articles/2781451301784570
+
+== Preparation
+Each availability zone requires two NAT instances. Choose an AMI that will be able to handle the expected traffic load. Configure the NAT instances according to the Amazon reference example.
+
+Key environment setup tasks:
+
+* Create the public and private subnets
+* Create the route for the private subnet
+* Create the NAT_Monitor IAM role
+* Reserve an Elastic IP for the egress IP
+
+Key instance setup tasks:
+
+* Disable source/destination checking
+* Enable auto-assigned public IPs
+* Enable IP Masquerading with iptables
+* Enable IP Forwarding with sysctl
+* Assign the NAT_Monitor role
+* Customize nat_config.py on each instance
+
+NOTE: When creating the NAT_Monitor role, substitute the supplied IAM policy document when directed to create the policy. The supplied policy differs in that it also grants the instances the privilege to query and move the Elastic IP associated with the egress.
+
+== Installation
+* Copy nat_config.py and nat_monitor.py to /usr/local/sbin
+* Using the supplied template, create a root cron job to start the nat monitor on reboot
+* Start the monitor script
+
+NOTE: The simplest way to start the NAT monitor is to reboot the instance; the monitor will start automatically and assume its assigned role on startup. Alternatively, you could use /usr/bin/at thusly:
+```
+[root@vpc-nat-1a-primary ~]# at now
+at> /usr/local/sbin/nat_monitor.py >> /var/log/nat_monitor.log
+at> ^D
+job 13 at 2014-08-28 14:19
+```
+
+== Operation
+vpc-nat-ha requires two NAT instances per availability zone. One is designated the primary, the other is the secondary. The distinction is defined in the config file. Whichever is configured to be the primary will take the route and egress IP as soon as the monitor script is started. The secondary monitors the primary, and if the primary fails, the secondary then takes over the route and egress IP.
+As an added bonus, the primary also monitors the secondary, and if for some unfathomable reason the secondary fails, the primary will restart it, but obviously the network will remain unchanged.
+
+NOTE: If the script is running in the foreground, DO NOT USE CTRL-C TO STOP THE SCRIPT! This will trigger a false positive and shut down the other nat (but not re-start it). Use CTRL-Z to suspend it, then kill it: killall nat_monitor.py

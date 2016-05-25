@@ -1,0 +1,1 @@
+@reboot /usr/local/sbin/nat_monitor.py >> /var/log/nat_monitor.log
